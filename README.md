@@ -1,6 +1,8 @@
 # My Python Course
 
-![Python](https://www.python.org/community/logos/python-logo-master-v3-TM.png)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d1aba9dd-4647-4168-9e40-6dc8bda8fd11" width="150"/>
+</p>
 
 ## Course Overview
 This repository contains material for my comprehensive Python course that covers various programming concepts and practical applications.
@@ -10,6 +12,7 @@ This repository contains material for my comprehensive Python course that covers
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Last Updated](https://img.shields.io/badge/last%20updated-2026--03--20-orange.svg)
+![Github](https://img.shields.io/badge/github-repo-blue?logo=github)
 
 ### About the Course
 - **Duration**: 10 weeks
