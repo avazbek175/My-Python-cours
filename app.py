@@ -722,30 +722,46 @@ async def confirm_sub_cb(call: CallbackQuery):
         except Exception:
             pass
     elif msg_id:
-        # Postni yangilash
+        # Postni yangilash (caption)
         try:
             bot_info = await bot.get_me()
+            ch_id_str = order[2]
+            ch_link   = order[3]
             post_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"➕ {ch_title} ga obuna bo'l", url=order[3])],
-                [InlineKeyboardButton(
-                    text="✅ Tasdiqlash — 1 000 so'm ol",
-                    url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
-                )]
+                [InlineKeyboardButton(text="🛍 Kanal", url=ch_link)],
+                [
+                    InlineKeyboardButton(
+                        text="✅ Tasdiqlash",
+                        url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
+                    ),
+                    InlineKeyboardButton(text="🤖 Bot", url=f"https://t.me/{bot_info.username}"),
+                ]
             ])
-            await bot.edit_message_text(
-                chat_id=str(EARNING_CHANNEL_ID),
-                message_id=msg_id,
-                text=(
-                    f"📢 <b>{ch_title}</b>\n"
-                    f"🔗 {order[3]}\n"
-                    f"👥 Obunachi: {ch_members:,}\n\n"
-                    f"📊 <b>Buyurtma holati:</b>\n"
-                    f"🎯 Buyurtma miqdori: {amount}\n"
-                    f"✅ Tasdiqlangan: {new_confirmed}"
-                ),
-                reply_markup=post_kb,
-                parse_mode="HTML"
+            new_caption = (
+                f"🆔 <b>ID Raqami:</b> <code>{ch_id_str}</code>\n"
+                f"📝 <b>Nomi:</b> {ch_title}\n"
+                f"🚀 <b>Buyurtma soni:</b> {amount}\n"
+                f"✅ <b>Bajarildi:</b> {new_confirmed}\n"
+                f"🔑 <b>Usernamesi:</b> {ch_link}\n"
+                f"🔒 <b>Buyurtma raqami:</b> {order_id}"
             )
+            # Rasmli post bo'lsa caption, matnli bo'lsa text edit
+            try:
+                await bot.edit_message_caption(
+                    chat_id=str(EARNING_CHANNEL_ID),
+                    message_id=msg_id,
+                    caption=new_caption,
+                    reply_markup=post_kb,
+                    parse_mode="HTML"
+                )
+            except Exception:
+                await bot.edit_message_text(
+                    chat_id=str(EARNING_CHANNEL_ID),
+                    message_id=msg_id,
+                    text=new_caption,
+                    reply_markup=post_kb,
+                    parse_mode="HTML"
+                )
         except Exception:
             pass
 
@@ -1198,30 +1214,48 @@ async def confirm_order(call: CallbackQuery, state: FSMContext):
         data['channel_title'], data['channel_members'], amount
     )
 
-    post_text = (
-        f"📢 <b>{data['channel_title']}</b>\n"
-        f"🔗 {data['channel_link']}\n"
-        f"👥 Obunachi: {data['channel_members']:,}\n\n"
-        f"📊 <b>Buyurtma holati:</b>\n"
-        f"🎯 Buyurtma miqdori: {amount}\n"
-        f"✅ Tasdiqlangan: 0"
+    caption = (
+        f"🆔 <b>ID Raqami:</b> <code>{data['channel_id']}</code>\n"
+        f"📝 <b>Nomi:</b> {data['channel_title']}\n"
+        f"🚀 <b>Buyurtma soni:</b> {amount}\n"
+        f"✅ <b>Bajarildi:</b> 0\n"
+        f"🔑 <b>Usernamesi:</b> {data['channel_link']}\n"
+        f"🔒 <b>Buyurtma raqami:</b> {order_id}"
     )
     try:
         bot_info = await bot.get_me()
         post_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text=f"➕ {data['channel_title']} ga obuna bo'l",
-                url=data['channel_link']
-            )],
-            [InlineKeyboardButton(
-                text="✅ Tasdiqlash — 1 000 so'm ol",
-                url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
-            )]
+            [InlineKeyboardButton(text="🛍 Kanal", url=data['channel_link'])],
+            [
+                InlineKeyboardButton(
+                    text="✅ Tasdiqlash",
+                    url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
+                ),
+                InlineKeyboardButton(text="🤖 Bot", url=f"https://t.me/{bot_info.username}"),
+            ]
         ])
-        sent = await bot.send_message(
-            str(EARNING_CHANNEL_ID), post_text,
-            parse_mode="HTML", reply_markup=post_kb
-        )
+        # Kanal rasmini olish
+        try:
+            chat_obj = await bot.get_chat(data['channel_id'])
+            photo = chat_obj.photo
+        except Exception:
+            photo = None
+
+        if photo:
+            file = await bot.get_file(photo.big_file_id)
+            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
+            sent = await bot.send_photo(
+                chat_id=str(EARNING_CHANNEL_ID),
+                photo=file_url,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=post_kb
+            )
+        else:
+            sent = await bot.send_message(
+                str(EARNING_CHANNEL_ID), caption,
+                parse_mode="HTML", reply_markup=post_kb
+            )
         update_order_message_id(order_id, sent.message_id)
     except Exception as e:
         logging.warning(f"Earning kanaliga yuborishda xato: {e}")
