@@ -1252,28 +1252,42 @@ async def confirm_order(call: CallbackQuery, state: FSMContext):
             ]
         ])
         # Kanal rasmini olish
+        photo_file_id = None
         try:
             chat_obj = await bot.get_chat(data['channel_id'])
-            photo = chat_obj.photo
+            if chat_obj.photo:
+                photo_file_id = chat_obj.photo.big_file_id
         except Exception:
-            photo = None
+            photo_file_id = None
 
-        if photo:
-            sent = await bot.send_photo(
-                chat_id=str(EARNING_CHANNEL_ID),
-                photo=photo.big_file_id,
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=post_kb
-            )
-        else:
+        sent = None
+        # Avval rasmli yuborishga urinish
+        if photo_file_id:
+            try:
+                sent = await bot.send_photo(
+                    chat_id=EARNING_CHANNEL_ID,
+                    photo=photo_file_id,
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_markup=post_kb
+                )
+            except Exception as e:
+                logging.warning(f"send_photo xato, rasmsiz urinish: {e}")
+
+        # Rasmsiz (matn) yuborish
+        if not sent:
             sent = await bot.send_message(
-                str(EARNING_CHANNEL_ID), caption,
+                EARNING_CHANNEL_ID, caption,
                 parse_mode="HTML", reply_markup=post_kb
             )
         update_order_message_id(order_id, sent.message_id)
     except Exception as e:
-        logging.warning(f"Earning kanaliga yuborishda xato: {e}")
+        logging.error(f"Earning kanaliga yuborishda xato: {e}")
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(admin_id, f"⚠️ Earning kanaliga yuborishda xato:\n<code>{e}</code>", parse_mode="HTML")
+            except Exception:
+                pass
 
     await call.message.edit_reply_markup(reply_markup=None)
     await call.message.answer(
