@@ -16,20 +16,20 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import sqlite3
 from datetime import datetime, timedelta
 
-# ===================== SOZLAMALAR (environment variables) =====================
-BOT_TOKEN = os.environ["BOT_TOKEN"]
+# ===================== SOZLAMALAR (runtime da o'qiladi) =====================
+BOT_TOKEN = None
+REQUIRED_CHANNELS = []
+EARNING_CHANNEL_ID = None
+ADMIN_IDS = []
+DAILY_BONUS_AMOUNT = 500
 
-# Format: '[{"id":"@kanal1","name":"Kanal 1","link":"https://t.me/kanal1"},...]'
-REQUIRED_CHANNELS = json.loads(os.environ["REQUIRED_CHANNELS"])
-
-# Mablag' yig'ish kanali
-EARNING_CHANNEL_ID = os.environ["EARNING_CHANNEL_ID"]
-
-# Format: "123456789,987654321"
-ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
-
-# Kundalik bonus miqdori (so'm)
-DAILY_BONUS_AMOUNT = int(os.environ.get("DAILY_BONUS_AMOUNT", "500"))
+def load_config():
+    global BOT_TOKEN, REQUIRED_CHANNELS, EARNING_CHANNEL_ID, ADMIN_IDS, DAILY_BONUS_AMOUNT
+    BOT_TOKEN = os.environ["BOT_TOKEN"]
+    REQUIRED_CHANNELS = json.loads(os.environ["REQUIRED_CHANNELS"])
+    EARNING_CHANNEL_ID = os.environ["EARNING_CHANNEL_ID"]
+    ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
+    DAILY_BONUS_AMOUNT = int(os.environ.get("DAILY_BONUS_AMOUNT", "500"))
 
 # ===================== DATABASE =====================
 def init_db():
@@ -230,7 +230,7 @@ def channel_sub_inline():
     return kb
 
 # ===================== BOT & DISPATCHER =====================
-bot = Bot(token=BOT_TOKEN)
+bot: Bot = None  # type: ignore
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 dp.include_router(router)
@@ -721,8 +721,11 @@ async def cancel_order(call: CallbackQuery, state: FSMContext):
 
 # ===================== MAIN =====================
 async def main():
+    global bot
+    load_config()
     init_db()
     logging.basicConfig(level=logging.INFO)
+    bot = Bot(token=str(BOT_TOKEN))
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
