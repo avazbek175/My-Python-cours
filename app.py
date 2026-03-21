@@ -565,7 +565,7 @@ async def send_next_order_card(user_id: int, target_message):
     if not order:
         await target_message.answer(
             "😔 Hozircha faol buyurtmalar yo'q.\n"
-            "Keyinroq qayta urinib ko'ring!",
+            "Keyinroq qayta urinib ko'ring!"
         )
         return
     oid, owner_id, ch_id, ch_link, ch_title, ch_members, amount, confirmed, status, msg_id, created_at = order
@@ -573,13 +573,6 @@ async def send_next_order_card(user_id: int, target_message):
         [InlineKeyboardButton(text=f"➕ {ch_title} ga obuna bo'l", url=ch_link)],
         [InlineKeyboardButton(text="✅ Obuna bo'ldim — tasdiqlash", callback_data=f"confirm_sub:{oid}")]
     ])
-    # Kanal rasmini olishga harakat
-    try:
-        chat_obj = await bot.get_chat(ch_id)
-        photo = chat_obj.photo
-    except Exception:
-        photo = None
-
     text = (
         f"📢 <b>{ch_title}</b>\n"
         f"🔗 {ch_link}\n"
@@ -590,19 +583,30 @@ async def send_next_order_card(user_id: int, target_message):
         f"1️⃣ <b>Kanalga obuna bo'ling</b>\n"
         f"2️⃣ <b>Obuna bo'ldim</b> tugmasini bosing"
     )
-    if photo:
-        await target_message.answer_photo(
-            photo=photo.big_file_id,
-            caption=text,
-            reply_markup=card_kb,
-            parse_mode="HTML"
-        )
-    else:
+    # Kanal rasmini olishga harakat, xato bo'lsa rasmsiz yuborish
+    sent = False
+    try:
+        chat_obj = await bot.get_chat(ch_id)
+        if chat_obj.photo:
+            try:
+                await target_message.answer_photo(
+                    photo=chat_obj.photo.big_file_id,
+                    caption=text,
+                    reply_markup=card_kb,
+                    parse_mode="HTML"
+                )
+                sent = True
+            except Exception as e:
+                logging.warning(f"answer_photo xato: {e}")
+    except Exception as e:
+        logging.warning(f"get_chat xato: {e}")
+    if not sent:
         await target_message.answer(text, reply_markup=card_kb, parse_mode="HTML")
 
 @router.callback_query(F.data == "earn_here")
 async def earn_here_cb(call: CallbackQuery):
     assert call.message and not isinstance(call.message, InaccessibleMessage)
+    await call.answer()
     await send_next_order_card(call.from_user.id, call.message)
 
 
