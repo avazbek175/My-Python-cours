@@ -454,12 +454,17 @@ async def handle_order_confirm(message: Message, args: str):
 async def check_sub_cb(call: CallbackQuery):
     assert call.message and not isinstance(call.message, InaccessibleMessage)
     if await check_subscription(call.from_user.id):
-        await call.message.edit_text(
-            "✅ <b>Obuna tasdiqlandi!</b>\n\nBotdan foydalanishingiz mumkin 🎉",
-            parse_mode="HTML"
-        )
+        await call.message.delete()
+        name = call.from_user.first_name
         await call.message.answer(
-            "📌 Kerakli bo'limni tanlang 👇", reply_markup=main_kb()
+            f"╔══════════════════╗\n"
+            f"║  🌟 XUSH KELIBSIZ  ║\n"
+            f"╚══════════════════╝\n\n"
+            f"👋 Salom, <b>{name}</b>!\n\n"
+            f"🤖 Bu bot orqali <b>obunachi yig'ing</b>\n"
+            f"va <b>pul ishlang!</b>\n\n"
+            f"📌 Quyidan kerakli bo'limni tanlang 👇",
+            reply_markup=main_kb(), parse_mode="HTML"
         )
     else:
         await call.answer("❌ Barcha kanallarga obuna bo'lmagansiz!", show_alert=True)
