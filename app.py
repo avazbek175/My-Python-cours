@@ -1219,7 +1219,7 @@ async def confirm_order(call: CallbackQuery, state: FSMContext):
         f"📝 <b>Nomi:</b> {data['channel_title']}\n"
         f"🚀 <b>Buyurtma soni:</b> {amount}\n"
         f"✅ <b>Bajarildi:</b> 0\n"
-        f"🔑 <b>Usernamesi:</b> {data['channel_link']}\n"
+        f"🔑 <b>Usernamesi:</b> @{data['channel_id'].lstrip('@')}\n"
         f"🔒 <b>Buyurtma raqami:</b> {order_id}"
     )
     try:
@@ -1242,11 +1242,9 @@ async def confirm_order(call: CallbackQuery, state: FSMContext):
             photo = None
 
         if photo:
-            file = await bot.get_file(photo.big_file_id)
-            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
             sent = await bot.send_photo(
                 chat_id=str(EARNING_CHANNEL_ID),
-                photo=file_url,
+                photo=photo.big_file_id,
                 caption=caption,
                 parse_mode="HTML",
                 reply_markup=post_kb
