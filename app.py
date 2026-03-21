@@ -387,7 +387,11 @@ async def handle_order_confirm(message: Message, args: str):
         await message.answer("❌ Buyurtma topilmadi!", reply_markup=main_kb())
         return
 
-    oid, owner_id, ch_id, ch_link, ch_title, ch_members, amount, confirmed, status, msg_id, created_at = order
+    owner_id  = order[1]
+    ch_link   = order[3]
+    ch_title  = order[4]
+    ch_members = order[5]
+    status    = order[8]
 
     if status != 'active':
         await message.answer(
@@ -410,79 +414,25 @@ async def handle_order_confirm(message: Message, args: str):
         )
         return
 
-    # Obuna tekshirish
-    try:
-        member = await bot.get_chat_member(ch_id, message.from_user.id)
-        if member.status in ("left", "kicked", "banned"):
-            confirm_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text=f"➕ {ch_title} ga obuna bo'l", url=ch_link),
-            ]])
-            await message.answer(
-                f"❌ <b>Siz hali kanalga obuna bo'lmagansiz!</b>\n\n"
-                f"📢 Kanal: <b>{ch_title}</b>\n\n"
-                f"Avval kanalga obuna bo'ling, keyin\n"
-                f"yana ushbu havolaga bosing.",
-                reply_markup=confirm_kb, parse_mode="HTML"
-            )
-            return
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}", reply_markup=main_kb())
-        return
-
-    # Muvaffaqiyatli
-    add_balance(message.from_user.id, 1000)
-    mark_rewarded(message.from_user.id, order_id)
-    new_confirmed = confirmed + 1
-    update_order_confirmed(order_id, new_confirmed)
-
-    balance = get_balance(message.from_user.id)
+    # Bot chatiga kanal kartasini yuborish — foydalanuvchi obuna bo'lib tasdiqlaydi
+    card_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"➕ {ch_title} ga obuna bo'l", url=ch_link)],
+        [InlineKeyboardButton(text="✅ Obuna bo'ldim — tasdiqlash", callback_data=f"confirm_sub:{order_id}")]
+    ])
     await message.answer(
-        f"✅ <b>Tasdiqlandi!</b>\n\n"
-        f"📢 Kanal: <b>{ch_title}</b>\n\n"
-        f"💰 Hisobingizga <b>1 000 so'm</b> qo'shildi!\n"
-        f"💳 Joriy balans: <b>{balance:,} so'm</b>",
-        reply_markup=main_kb(), parse_mode="HTML"
+        f"┌─────────────────────┐\n"
+        f"│    📢 KANAL MA'LUMOTI    │\n"
+        f"└─────────────────────┘\n\n"
+        f"📌 <b>{ch_title}</b>\n"
+        f"🔗 {ch_link}\n"
+        f"👥 Obunachi: <b>{ch_members:,} ta</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Mukofot: <b>1 000 so'm</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"1️⃣ <b>Kanalga obuna bo'ling</b>\n"
+        f"2️⃣ <b>Obuna bo'ldim</b> tugmasini bosing",
+        reply_markup=card_kb, parse_mode="HTML"
     )
-
-    # Kanal postini yangilash
-    if msg_id:
-        try:
-            bot_info = await bot.get_me()
-            post_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="✅ Obuna bo'ldim — 1 000 so'm ol!",
-                    url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
-                )
-            ]])
-            await bot.edit_message_text(
-                chat_id=str(EARNING_CHANNEL_ID),
-                message_id=msg_id,
-                text=(
-                    f"📢 <b>{ch_title}</b>\n"
-                    f"🔗 {ch_link}\n"
-                    f"👥 Joriy obunachi: {ch_members}\n\n"
-                    f"📊 <b>Buyurtma holati:</b>\n"
-                    f"🎯 Buyurtma miqdori: {amount}\n"
-                    f"✅ Tasdiqlangan: {new_confirmed}"
-                ),
-                reply_markup=post_kb,
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
-
-    if new_confirmed >= amount:
-        complete_order(order_id)
-        try:
-            await bot.send_message(
-                owner_id,
-                f"🎉 <b>Buyurtmangiz yakunlandi!</b>\n\n"
-                f"✅ {amount} ta obunachi to'plandi.\n"
-                f"📢 Kanal: {ch_title}",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
 
 # ══════════════════════════════════════════════
 #              OBUNA TEKSHIRISH
@@ -589,50 +539,35 @@ async def earn_money(message: Message):
     await message.answer("⬇️", reply_markup=earning_inline())
 
 # ══════════════════════════════════════════════
-#              KANAL ORQALI OBUNA (LIST)
+#              KANAL ORQALI OBUNA
 # ══════════════════════════════════════════════
 @router.callback_query(F.data == "earn_channel")
 async def earn_via_channel(call: CallbackQuery):
     assert call.message and not isinstance(call.message, InaccessibleMessage)
     await call.message.edit_reply_markup(reply_markup=None)
-    orders = get_active_orders()
 
-    if not orders:
-        await call.message.answer(
-            "😔 <b>Hozircha aktiv buyurtmalar yo'q</b>\n\n"
-            "Keyinroq qayta urinib ko'ring!",
-            reply_markup=back_kb(), parse_mode="HTML"
+    # Foydalanuvchini earning kanaliga yo'naltirish
+    earning_username = str(EARNING_CHANNEL_ID).lstrip("@")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="📢 Obunalar kanaliga o'tish",
+            url=f"https://t.me/{earning_username}"
         )
-        return
-
-    text = (
-        "┌─────────────────────┐\n"
-        "│  📢 AKTIV KANALLAR    │\n"
-        "└─────────────────────┘\n\n"
-        "Obuna bo'lib <b>1 000 so'm</b> ishlang! 💵\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-    )
-    kb_buttons = []
-
-    for order in orders[:10]:
-        oid, uid, ch_id, ch_link, ch_title, ch_members, amount, confirmed, status, msg_id, created_at = order
-        needed = amount - confirmed
-        text += (
-            f"📌 <b>{ch_title}</b>\n"
-            f"   👥 Obunachi: {ch_members} ta\n"
-            f"   🎯 Kerak: {needed} ta\n"
-            f"   🔗 {ch_link}\n\n"
-        )
-        kb_buttons.append([InlineKeyboardButton(
-            text=f"✅ {ch_title} ga obuna bo'ldim",
-            callback_data=f"subscribed_to:{oid}:{ch_id}"
-        )])
-
-    kb_buttons.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_main")])
+    ]])
     await call.message.answer(
-        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons),
-        parse_mode="HTML", disable_web_page_preview=True
+        "┌─────────────────────┐\n"
+        "│  📢 KANAL ORQALI ISHLASH │\n"
+        "└─────────────────────┘\n\n"
+        "Obunalar kanalida mavjud buyurtmalarni ko'ring!\n\n"
+        "📌 <b>Qanday ishlash kerak:</b>\n"
+        "1️⃣ Kanalga o'ting\n"
+        "2️⃣ Buyurtma postini tanlang\n"
+        "3️⃣ Kanalga obuna bo'ling\n"
+        "4️⃣ <b>Tasdiqlash</b> tugmasini bosing\n"
+        "5️⃣ Hisobingizga <b>1 000 so'm</b> tushadi! 💰",
+        reply_markup=kb, parse_mode="HTML"
     )
+
 
 # ══════════════════════════════════════════════
 #              OBUNA TASDIQLASH (foydalanuvchi)
@@ -695,6 +630,117 @@ async def user_subscribed(call: CallbackQuery):
                 f"🎉 <b>Buyurtmangiz yakunlandi!</b>\n\n"
                 f"✅ {amount} ta obunachi to'plandi.\n"
                 f"📢 Kanal: {ch_title}",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+# ══════════════════════════════════════════════
+#              CONFIRM_SUB — bot chatdagi karta orqali tasdiqlash
+# ══════════════════════════════════════════════
+@router.callback_query(F.data.startswith("confirm_sub:"))
+async def confirm_sub_cb(call: CallbackQuery):
+    assert call.data and call.message and not isinstance(call.message, InaccessibleMessage)
+    order_id = int(call.data.split(":")[1])
+
+    order = get_order(order_id)
+    if not order:
+        await call.answer("❌ Buyurtma topilmadi!", show_alert=True); return
+
+    owner_id  = order[1]
+    ch_id     = order[2]
+    ch_title  = order[4]
+    ch_members = order[5]
+    amount    = order[6]
+    confirmed = order[7]
+    status    = order[8]
+    msg_id    = order[9]
+
+    if status != 'active':
+        await call.answer("❌ Bu buyurtma allaqachon yakunlangan!", show_alert=True)
+        await call.message.delete()
+        return
+
+    if call.from_user.id == owner_id:
+        await call.answer("❌ O'z kanalingizga obuna bo'lib pul ishlash mumkin emas!", show_alert=True)
+        return
+
+    if has_been_rewarded(call.from_user.id, order_id):
+        await call.answer("❌ Siz bu buyurtmadan allaqachon mukofot oldingiz!", show_alert=True)
+        await call.message.delete()
+        return
+
+    # Obuna tekshirish
+    try:
+        member = await bot.get_chat_member(ch_id, call.from_user.id)
+        if member.status in ("left", "kicked", "banned"):
+            await call.answer("❌ Avval kanalga obuna bo'ling!", show_alert=True)
+            return
+    except Exception as e:
+        await call.answer(f"❌ Xatolik: {e}", show_alert=True)
+        return
+
+    # Mukofot berish
+    add_balance(call.from_user.id, 1000)
+    mark_rewarded(call.from_user.id, order_id)
+    new_confirmed = confirmed + 1
+    update_order_confirmed(order_id, new_confirmed)
+
+    # Bot chatidagi karta xabarini o'chirish
+    await call.message.delete()
+
+    # Foydalanuvchiga natija
+    balance = get_balance(call.from_user.id)
+    await call.message.answer(
+        f"✅ <b>Tasdiqlandi!</b>\n\n"
+        f"📢 Kanal: <b>{ch_title}</b>\n\n"
+        f"💰 Hisobingizga <b>1 000 so'm</b> qo'shildi!\n"
+        f"💳 Joriy balans: <b>{balance:,} so'm</b>",
+        reply_markup=main_kb(), parse_mode="HTML"
+    )
+
+    # Earning kanal postini yangilash yoki o'chirish
+    if new_confirmed >= amount:
+        # Maqsadga yetdi — postni o'chirish
+        complete_order(order_id)
+        if msg_id:
+            try:
+                await bot.delete_message(chat_id=str(EARNING_CHANNEL_ID), message_id=msg_id)
+            except Exception:
+                pass
+        try:
+            await bot.send_message(
+                owner_id,
+                f"🎉 <b>Buyurtmangiz tasdiqlandi!</b>\n\n"
+                f"✅ {amount} ta obunachi to'plandi.\n"
+                f"📢 Kanal: <b>{ch_title}</b>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+    elif msg_id:
+        # Postni yangilash
+        try:
+            bot_info = await bot.get_me()
+            post_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=f"➕ {ch_title} ga obuna bo'l", url=order[3])],
+                [InlineKeyboardButton(
+                    text="✅ Tasdiqlash — 1 000 so'm ol",
+                    url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
+                )]
+            ])
+            await bot.edit_message_text(
+                chat_id=str(EARNING_CHANNEL_ID),
+                message_id=msg_id,
+                text=(
+                    f"📢 <b>{ch_title}</b>\n"
+                    f"🔗 {order[3]}\n"
+                    f"👥 Obunachi: {ch_members:,}\n\n"
+                    f"📊 <b>Buyurtma holati:</b>\n"
+                    f"🎯 Buyurtma miqdori: {amount}\n"
+                    f"✅ Tasdiqlangan: {new_confirmed}"
+                ),
+                reply_markup=post_kb,
                 parse_mode="HTML"
             )
         except Exception:
@@ -1159,12 +1205,16 @@ async def confirm_order(call: CallbackQuery, state: FSMContext):
     )
     try:
         bot_info = await bot.get_me()
-        post_kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="✅ Obuna bo'ldim — 1 000 so'm ol!",
+        post_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"➕ {data['channel_title']} ga obuna bo'l",
+                url=data['channel_link']
+            )],
+            [InlineKeyboardButton(
+                text="✅ Tasdiqlash — 1 000 so'm ol",
                 url=f"https://t.me/{bot_info.username}?start=order_{order_id}"
-            )
-        ]])
+            )]
+        ])
         sent = await bot.send_message(
             str(EARNING_CHANNEL_ID), post_text,
             parse_mode="HTML", reply_markup=post_kb
