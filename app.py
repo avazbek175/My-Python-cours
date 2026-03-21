@@ -54,6 +54,8 @@ def init_db():
             full_name   TEXT,
             balance     INTEGER DEFAULT 0,
             last_bonus  TEXT,
+            referred_by INTEGER DEFAULT NULL,
+            ref_paid    INTEGER DEFAULT 0,
             created_at  TEXT
         )
     """)
@@ -92,14 +94,36 @@ def init_db():
             created_at   TEXT
         )
     """)
+    # Mavjud DB ga yangi ustunlar qo'shish (migration)
+    for col in [("referred_by", "INTEGER DEFAULT NULL"), ("ref_paid", "INTEGER DEFAULT 0")]:
+        try:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col[0]} {col[1]}")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
 # ── users ──
-def create_user(user_id, username, full_name):
+def create_user(user_id, username, full_name, referred_by=None):
     conn = db(); c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users (user_id,username,full_name,balance,created_at) VALUES (?,?,?,0,?)",
-              (user_id, username, full_name, datetime.now().isoformat()))
+    c.execute(
+        "INSERT OR IGNORE INTO users (user_id,username,full_name,balance,referred_by,created_at) VALUES (?,?,?,0,?,?)",
+        (user_id, username, full_name, referred_by, datetime.now().isoformat())
+    )
+    conn.commit(); conn.close()
+
+def get_referrer(user_id):
+    """Foydalanuvchini kim taklif qilganini qaytaradi (ref_paid=0 bo'lsa)"""
+    conn = db(); c = conn.cursor()
+    c.execute("SELECT referred_by, ref_paid FROM users WHERE user_id=?", (user_id,))
+    row = c.fetchone(); conn.close()
+    if row and row[0] and row[1] == 0:
+        return row[0]
+    return None
+
+def mark_ref_paid(user_id):
+    conn = db(); c = conn.cursor()
+    c.execute("UPDATE users SET ref_paid=1 WHERE user_id=?", (user_id,))
     conn.commit(); conn.close()
 
 def get_balance(user_id):
@@ -303,13 +327,26 @@ def is_admin(user_id: int) -> bool:
 async def cmd_start(message: Message, state: FSMContext):
     assert message.from_user
     await state.clear()
-    create_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
+
+    args = message.text.split(maxsplit=1)[1] if message.text and " " in message.text else ""
 
     # Kanal orqali tasdiqlash: /start order_123
-    args = message.text.split(maxsplit=1)[1] if message.text and " " in message.text else ""
     if args.startswith("order_"):
+        create_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
         await handle_order_confirm(message, args)
         return
+
+    # Referal: /start ref_123456789
+    referred_by = None
+    if args.startswith("ref_"):
+        try:
+            ref_id = int(args.split("_")[1])
+            if ref_id != message.from_user.id:
+                referred_by = ref_id
+        except (IndexError, ValueError):
+            pass
+
+    create_user(message.from_user.id, message.from_user.username, message.from_user.full_name, referred_by)
 
     if not await check_subscription(message.from_user.id):
         await message.answer(
@@ -454,6 +491,24 @@ async def handle_order_confirm(message: Message, args: str):
 async def check_sub_cb(call: CallbackQuery):
     assert call.message and not isinstance(call.message, InaccessibleMessage)
     if await check_subscription(call.from_user.id):
+        # Referal bonus — faqat bir marta, to'liq obuna bo'lgandan keyin
+        referrer_id = get_referrer(call.from_user.id)
+        if referrer_id:
+            add_balance(referrer_id, 2000)
+            mark_ref_paid(call.from_user.id)
+            try:
+                ref_balance = get_balance(referrer_id)
+                await bot.send_message(
+                    referrer_id,
+                    f"🎉 <b>Referal bonus!</b>\n\n"
+                    f"👤 Taklif qilgan odamingiz botga to'liq qo'shildi!\n"
+                    f"💰 Hisobingizga <b>2 000 so'm</b> qo'shildi!\n"
+                    f"💳 Joriy balans: <b>{ref_balance:,} so'm</b>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+
         await call.message.delete()
         name = call.from_user.first_name
         await call.message.answer(
