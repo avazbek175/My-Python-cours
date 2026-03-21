@@ -279,10 +279,13 @@ def admin_kb():
     ], resize_keyboard=True)
 
 def earning_inline():
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="📢 Kanal orqali", callback_data="earn_channel"),
-        InlineKeyboardButton(text="🤖 Bot orqali",   callback_data="earn_bot"),
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📢 Kanal orqali", callback_data="earn_channel"),
+            InlineKeyboardButton(text="🤖 Bot orqali",   callback_data="earn_bot"),
+        ],
+        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_main")],
+    ])
 
 def channel_sub_inline():
     buttons = [[InlineKeyboardButton(text=f"➕ {ch['name']}", url=ch['link'])]
@@ -534,9 +537,8 @@ async def earn_money(message: Message):
         "   Do'stlarni taklif qilib\n"
         "   <b>2 000 so'm</b> ishlang\n\n"
         "👇 Usulni tanlang:",
-        reply_markup=back_kb(), parse_mode="HTML"
+        reply_markup=earning_inline(), parse_mode="HTML"
     )
-    await message.answer("⬇️", reply_markup=earning_inline())
 
 # ══════════════════════════════════════════════
 #              KANAL ORQALI OBUNA
