@@ -198,6 +198,18 @@ def count_orders():
     c.execute("SELECT COUNT(*) FROM orders"); row = c.fetchone(); conn.close()
     return row[0] if row else 0
 
+def get_next_order_for_user(user_id):
+    """Foydalanuvchi uchun keyingi faol buyurtmani qaytaradi (o'zi bergan va mukofot olgan buyurtmalarni o'tkazib yuboradi)."""
+    conn = db(); c = conn.cursor()
+    c.execute("""
+        SELECT * FROM orders
+        WHERE status='active'
+          AND user_id != ?
+          AND id NOT IN (SELECT order_id FROM rewarded_users WHERE user_id=?)
+        ORDER BY id ASC LIMIT 1
+    """, (user_id, user_id))
+    row = c.fetchone(); conn.close(); return row
+
 # ── rewarded ──
 def has_been_rewarded(user_id, order_id) -> bool:
     conn = db(); c = conn.cursor()
@@ -278,13 +290,10 @@ def admin_kb():
         [KeyboardButton(text="🔙 Asosiy menyu")],
     ], resize_keyboard=True)
 
-def earning_inline():
+def earning_inline(channel_url: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="📢 Kanal orqali", callback_data="earn_channel"),
-            InlineKeyboardButton(text="🤖 Bot orqali",   callback_data="earn_bot"),
-        ],
-        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_main")],
+        [InlineKeyboardButton(text="🦶 Kanalga kirish",  url=channel_url)],
+        [InlineKeyboardButton(text="♻️ Shu yerda obuna", callback_data="earn_here")],
     ])
 
 def channel_sub_inline():
@@ -525,51 +534,76 @@ async def earn_money(message: Message):
         await message.answer("⚠️ Avval kanallarga obuna bo'ling!", reply_markup=channel_sub_inline())
         return
 
+    earning_username = str(EARNING_CHANNEL_ID).lstrip("-100").lstrip("@")
+    # EARNING_CHANNEL_ID raqamli bo'lsa username ni olishga harakat qilamiz
+    try:
+        earning_chat = await bot.get_chat(EARNING_CHANNEL_ID)
+        if earning_chat.username:
+            channel_url = f"https://t.me/{earning_chat.username}"
+        else:
+            channel_url = f"https://t.me/{earning_username}"
+    except Exception:
+        channel_url = f"https://t.me/{earning_username}"
+
     await message.answer(
-        "┌─────────────────────┐\n"
-        "│   💰 MABLAG' YIG'ISH    │\n"
-        "└─────────────────────┘\n\n"
-        "Quyidagi usullardan birini tanlang:\n\n"
-        "📢 <b>Kanal orqali</b>\n"
-        "   Boshqa kanalga obuna bo'lib\n"
-        "   <b>1 000 so'm</b> ishlang\n\n"
-        "🤖 <b>Bot orqali</b>\n"
-        "   Do'stlarni taklif qilib\n"
-        "   <b>2 000 so'm</b> ishlang\n\n"
-        "👇 Usulni tanlang:",
-        reply_markup=earning_inline(), parse_mode="HTML"
+        f"📢 <a href=\"{channel_url}\">@{earning_username}</a> kanaliga kirib e'londagi kanallarga obuna bo'ling "
+        f"har bir kanalingiz uchun <b>1 000 so'm</b> beriladi.\n\n"
+        f"✅ Botdan chiqmagan holatda kanallarga obuna bo'lishni istasangiz pastdagi "
+        f"« ♻️ Shu yerda obuna » tugmasini bosing va sizga berilgan kanalga obuna bo'ling!\n\n"
+        f"⚠️ Obuna bo'lgan kanal yoki guruhlardan <b>15 kun</b> davomida chiqib ketish mumkin emas!\n"
+        f"🚫 Obunani 15 kundan oldin bekor qilish holati bo'lsa jarima tarzida "
+        f"<b>2 000 so'm</b> hisobingizdan olinadi!",
+        reply_markup=earning_inline(channel_url), parse_mode="HTML"
     )
 
 # ══════════════════════════════════════════════
-#              KANAL ORQALI OBUNA
+#              SHU YERDA OBUNA — yordamchi funksiya
 # ══════════════════════════════════════════════
-@router.callback_query(F.data == "earn_channel")
-async def earn_via_channel(call: CallbackQuery):
-    assert call.message and not isinstance(call.message, InaccessibleMessage)
-    await call.message.edit_reply_markup(reply_markup=None)
-
-    # Foydalanuvchini earning kanaliga yo'naltirish
-    earning_username = str(EARNING_CHANNEL_ID).lstrip("@")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="📢 Obunalar kanaliga o'tish",
-            url=f"https://t.me/{earning_username}"
+async def send_next_order_card(user_id: int, target_message):
+    """Foydalanuvchiga keyingi mavjud buyurtma kartasini bot chatda yuboradi."""
+    order = get_next_order_for_user(user_id)
+    if not order:
+        await target_message.answer(
+            "😔 Hozircha faol buyurtmalar yo'q.\n"
+            "Keyinroq qayta urinib ko'ring!",
         )
-    ]])
-    await call.message.answer(
-        "┌─────────────────────┐\n"
-        "│  📢 KANAL ORQALI ISHLASH │\n"
-        "└─────────────────────┘\n\n"
-        "Obunalar kanalida mavjud buyurtmalarni ko'ring!\n\n"
-        "📌 <b>Qanday ishlash kerak:</b>\n"
-        "1️⃣ Kanalga o'ting\n"
-        "2️⃣ Buyurtma postini tanlang\n"
-        "3️⃣ Kanalga obuna bo'ling\n"
-        "4️⃣ <b>Tasdiqlash</b> tugmasini bosing\n"
-        "5️⃣ Hisobingizga <b>1 000 so'm</b> tushadi! 💰",
-        reply_markup=back_kb(), parse_mode="HTML"
+        return
+    oid, owner_id, ch_id, ch_link, ch_title, ch_members, amount, confirmed, status, msg_id, created_at = order
+    card_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"➕ {ch_title} ga obuna bo'l", url=ch_link)],
+        [InlineKeyboardButton(text="✅ Obuna bo'ldim — tasdiqlash", callback_data=f"confirm_sub:{oid}")]
+    ])
+    # Kanal rasmini olishga harakat
+    try:
+        chat_obj = await bot.get_chat(ch_id)
+        photo = chat_obj.photo
+    except Exception:
+        photo = None
+
+    text = (
+        f"📢 <b>{ch_title}</b>\n"
+        f"🔗 {ch_link}\n"
+        f"👥 Obunachi: <b>{ch_members:,} ta</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Mukofot: <b>1 000 so'm</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"1️⃣ <b>Kanalga obuna bo'ling</b>\n"
+        f"2️⃣ <b>Obuna bo'ldim</b> tugmasini bosing"
     )
-    await call.message.answer("⬇️", reply_markup=kb)
+    if photo:
+        await target_message.answer_photo(
+            photo=photo.big_file_id,
+            caption=text,
+            reply_markup=card_kb,
+            parse_mode="HTML"
+        )
+    else:
+        await target_message.answer(text, reply_markup=card_kb, parse_mode="HTML")
+
+@router.callback_query(F.data == "earn_here")
+async def earn_here_cb(call: CallbackQuery):
+    assert call.message and not isinstance(call.message, InaccessibleMessage)
+    await send_next_order_card(call.from_user.id, call.message)
 
 
 # ══════════════════════════════════════════════
@@ -699,8 +733,11 @@ async def confirm_sub_cb(call: CallbackQuery):
         f"📢 Kanal: <b>{ch_title}</b>\n\n"
         f"💰 Hisobingizga <b>1 000 so'm</b> qo'shildi!\n"
         f"💳 Joriy balans: <b>{balance:,} so'm</b>",
-        reply_markup=main_kb(), parse_mode="HTML"
+        parse_mode="HTML"
     )
+
+    # Keyingi buyurtmani avtomatik yuborish
+    await send_next_order_card(call.from_user.id, call.message)
 
     # Earning kanal postini yangilash yoki o'chirish
     if new_confirmed >= amount:
@@ -765,26 +802,6 @@ async def confirm_sub_cb(call: CallbackQuery):
         except Exception:
             pass
 
-# ══════════════════════════════════════════════
-#              BOT ORQALI OBUNA
-# ══════════════════════════════════════════════
-@router.callback_query(F.data == "earn_bot")
-async def earn_via_bot(call: CallbackQuery):
-    assert call.message and not isinstance(call.message, InaccessibleMessage)
-    await call.message.edit_reply_markup(reply_markup=None)
-    bot_info = await bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start=ref_{call.from_user.id}"
-    await call.message.answer(
-        "┌─────────────────────┐\n"
-        "│  🤖 BOT ORQALI ISHLASH  │\n"
-        "└─────────────────────┘\n\n"
-        "Do'stlarni botga taklif qiling!\n\n"
-        "🎁 Har bir yangi foydalanuvchi uchun\n"
-        "   <b>500 so'm</b> ishlaysiz!\n\n"
-        f"🔗 Sizning havola:\n<code>{ref_link}</code>\n\n"
-        "📤 Havolani do'stlaringizga yuboring!",
-        reply_markup=back_kb(), parse_mode="HTML"
-    )
 
 # ══════════════════════════════════════════════
 #              ORQAGA CALLBACK
