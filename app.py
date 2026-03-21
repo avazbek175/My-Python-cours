@@ -532,9 +532,9 @@ async def earn_money(message: Message):
         "   <b>1 000 so'm</b> ishlang\n\n"
         "🤖 <b>Bot orqali</b>\n"
         "   Do'stlarni taklif qilib\n"
-        "   <b>500 so'm</b> ishlang\n\n"
+        "   <b>2 000 so'm</b> ishlang\n\n"
         "👇 Usulni tanlang:",
-        reply_markup=ReplyKeyboardRemove(), parse_mode="HTML"
+        reply_markup=back_kb(), parse_mode="HTML"
     )
     await message.answer("⬇️", reply_markup=earning_inline())
 
@@ -565,8 +565,9 @@ async def earn_via_channel(call: CallbackQuery):
         "3️⃣ Kanalga obuna bo'ling\n"
         "4️⃣ <b>Tasdiqlash</b> tugmasini bosing\n"
         "5️⃣ Hisobingizga <b>1 000 so'm</b> tushadi! 💰",
-        reply_markup=kb, parse_mode="HTML"
+        reply_markup=back_kb(), parse_mode="HTML"
     )
+    await call.message.answer("⬇️", reply_markup=kb)
 
 
 # ══════════════════════════════════════════════
